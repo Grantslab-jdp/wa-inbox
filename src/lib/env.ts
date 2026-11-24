@@ -11,5 +11,5 @@ export const env = {
   get waAccessToken() { return required("WHATSAPP_ACCESS_TOKEN"); },   // permanent system user token
   get waAppSecret() { return required("WHATSAPP_APP_SECRET"); },       // for X-Hub-Signature-256
   get waVerifyToken() { return required("WHATSAPP_VERIFY_TOKEN"); },   // our own random string
-  get graphVersion() { return process.env.WHATSAPP_GRAPH_VERSION || "v23.0"; },
+  get graphVersion() { return process.env.WHATSAPP_GRAPH_VERSION || "v27.0"; },
 };
