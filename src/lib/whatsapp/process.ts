@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
+import { pushToAll } from "../push";
 
 // Minimal shapes of the Cloud API webhook payload we rely on.
 type WaContact = { wa_id: string; profile?: { name?: string } };
@@ -103,6 +104,18 @@ export async function processWebhook(db: SupabaseClient, payload: WaWebhookPaylo
         if (newId && media) {
           try { await downloadMedia(db, phoneNumberId, m.id, media); }
           catch (e) { errors.push(`media ${m.id}: ${(e as Error).message}`); }
+        }
+        if (newId) {
+          try {
+            const { data: msg } = await db.from("wa_messages").select("conversation_id").eq("id", newId).single();
+            const name = names.get(m.from) ?? m.from;
+            await pushToAll(db, {
+              title: name,
+              body: textOf(m) ?? (m.type === "audio" ? "Voice note" : m.type === "image" ? "Photo" : m.type === "document" ? "Document" : `[${m.type}]`),
+              url: msg ? `/c/${msg.conversation_id}` : "/",
+              tag: msg?.conversation_id,
+            });
+          } catch (e) { errors.push(`push ${m.id}: ${(e as Error).message}`); }
         }
       }
 
