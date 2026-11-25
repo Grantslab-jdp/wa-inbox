@@ -105,9 +105,9 @@ export default function ContactPanel({ conv, members, me, onChange, onClose }: {
           <ul className="space-y-2">
             {orders?.map((o) => (
               <li key={o.id}>
-                <a href={`https://www.moissanite.co.za/admin/orders/${o.id}`} target="_blank" rel="noreferrer"
+                <a href="https://www.moissanite.co.za/admin/orders" target="_blank" rel="noreferrer"
                   className="flex justify-between rounded-xl bg-panel-2 px-3 py-2 text-sm">
-                  <span>{new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} · {o.status}</span>
+                  <span>{new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} · {o.status}{o.ref ? ` · ${o.ref}` : ""}</span>
                   <span>R {Number(o.amount_zar).toLocaleString("en-ZA")}</span>
                 </a>
               </li>
