@@ -12,3 +12,10 @@ export function supabaseBrowser(): SupabaseClient {
   }
   return client;
 }
+
+// Realtime can connect before the session cookie is read, which makes it subscribe as anonymous and
+// RLS then hides every row. Hand the user's token to realtime before subscribing.
+export async function realtimeAuth(sb: SupabaseClient) {
+  const { data } = await sb.auth.getSession();
+  if (data.session) await sb.realtime.setAuth(data.session.access_token);
+}

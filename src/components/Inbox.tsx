@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { supabaseBrowser } from "@/lib/supabase/browser";
+import { supabaseBrowser, realtimeAuth } from "@/lib/supabase/browser";
 import { displayName, listTime } from "@/lib/format";
 import { windowOpen } from "@/lib/window";
 import type { Conversation, WaNumber } from "@/lib/types";
@@ -34,7 +34,8 @@ export default function Inbox({ numbers, initial }: { numbers: WaNumber[]; initi
         setConvs((prev) => [row, ...prev.filter((c) => c.id !== row.id)]
           .sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "")));
       })
-      .subscribe();
+      ;
+    realtimeAuth(sb).then(() => ch.subscribe((status, err) => { if (status !== "SUBSCRIBED") console.warn("realtime", status, err); }));
     // Catch up after the app returns from the background.
     const onVis = async () => {
       if (document.visibilityState !== "visible") return;

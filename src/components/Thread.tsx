@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { supabaseBrowser } from "@/lib/supabase/browser";
+import { supabaseBrowser, realtimeAuth } from "@/lib/supabase/browser";
 import { dayLabel, displayName, msgTime, prettyNumber, remaining } from "@/lib/format";
 import { windowClosesAt } from "@/lib/window";
 import type { Conversation, Message, WaNumber } from "@/lib/types";
@@ -32,7 +32,19 @@ export default function Thread({ conversation, number, initial, me }: {
   const open = closesAt !== null && now < closesAt;
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
-  useEffect(() => { bottom.current?.scrollIntoView({ block: "end" }); }, [messages.length]);
+  const mainRef = useRef<HTMLElement>(null);
+  const stick = useRef(true);
+  // Stay pinned to the newest message while images load, unless the user has scrolled up to read.
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const onScroll = () => { stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; };
+    const ro = new ResizeObserver(() => { if (stick.current) el.scrollTop = el.scrollHeight; });
+    Array.from(el.children).forEach((c) => ro.observe(c));
+    el.addEventListener("scroll", onScroll);
+    return () => { ro.disconnect(); el.removeEventListener("scroll", onScroll); };
+  }, [messages.length]);
+  useEffect(() => { if (stick.current) bottom.current?.scrollIntoView({ block: "end" }); }, [messages.length]);
 
   // Mark as read (and send blue ticks) when opened and whenever a new message arrives while viewing.
   const unread = conv.unread_count;
@@ -54,7 +66,8 @@ export default function Thread({ conversation, number, initial, me }: {
         (p) => { if ((p.new as Message)?.id) upsert(p.new as Message); })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "wa_conversations", filter: `id=eq.${conv.id}` },
         (p) => setConv((c) => ({ ...c, ...(p.new as Conversation) })))
-      .subscribe();
+      ;
+    realtimeAuth(sb).then(() => ch.subscribe((status, err) => { if (status !== "SUBSCRIBED") console.warn("realtime", status, err); }));
     const onVis = async () => {
       if (document.visibilityState !== "visible") return;
       const [{ data: msgs }, { data: c }] = await Promise.all([
@@ -115,7 +128,7 @@ export default function Thread({ conversation, number, initial, me }: {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
+      <main ref={mainRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
         {messages.map((m) => {
           const day = dayLabel(m.sent_at);
           const showDay = day !== lastDay;
