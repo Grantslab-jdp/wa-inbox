@@ -11,7 +11,12 @@ export type Conversation = {
   unread_count: number;
   handled_by: "human" | "agent";
   handover_requested: boolean;
+  notes: string | null;
+  labels: string[];
+  assigned_to: string | null;
 };
+
+export type Member = { email: string; display_name: string | null };
 
 export type Message = {
   id: string;
