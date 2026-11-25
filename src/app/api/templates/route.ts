@@ -25,3 +25,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: (e as Error).message, templates: [] }, { status: 502 });
   }
 }
+
+type NewTpl = { name: string; category: "UTILITY" | "MARKETING"; language: string; body: string; examples: string[] };
+
+// Submit a new template to Meta for review (members only).
+export async function POST(req: NextRequest) {
+  if (!(await currentMember())) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  const { pnid, templates } = (await req.json()) as { pnid: string; templates: NewTpl[] };
+  const { data: num } = await supabaseAdmin().from("wa_numbers").select("waba_id").eq("phone_number_id", pnid).single();
+  if (!num?.waba_id) return NextResponse.json({ error: "Unknown number" }, { status: 404 });
+  const results = [];
+  for (const t of templates) {
+    try {
+      const body: Record<string, unknown> = { type: "BODY", text: t.body };
+      if (t.examples.length) body.example = { body_text: [t.examples] };
+      const res = await graph(`${num.waba_id}/message_templates`, {
+        method: "POST",
+        body: { name: t.name, category: t.category, language: t.language, components: [body] },
+      });
+      results.push({ name: t.name, ok: true, res });
+    } catch (e) {
+      results.push({ name: t.name, ok: false, error: (e as Error).message });
+    }
+  }
+  return NextResponse.json({ results });
+}
