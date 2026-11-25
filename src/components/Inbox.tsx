@@ -4,13 +4,19 @@ import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser, realtimeAuth } from "@/lib/supabase/browser";
 import { displayName, listTime } from "@/lib/format";
 import { windowOpen } from "@/lib/window";
-import type { Conversation, WaNumber } from "@/lib/types";
+import type { Conversation, Member, WaNumber } from "@/lib/types";
+import { labelColour } from "@/lib/labels";
 import PushToggle from "./PushToggle";
 import SignOut from "./SignOut";
 
 const TAB_KEY = "wa-inbox-number";
 
-export default function Inbox({ numbers, initial }: { numbers: WaNumber[]; initial: Conversation[] }) {
+type Filter = "all" | "unread" | "mine" | "unassigned";
+const FILTERS: [Filter, string][] = [["all", "All"], ["unread", "Unread"], ["mine", "Mine"], ["unassigned", "Unassigned"]];
+
+export default function Inbox({ numbers, initial, me, members }: { numbers: WaNumber[]; initial: Conversation[]; me: string; members: Member[] }) {
+  const [filter, setFilter] = useState<Filter>("all");
+  const [q, setQ] = useState("");
   const [convs, setConvs] = useState(initial);
   const [tab, setTab] = useState<string>(numbers[0]?.phone_number_id ?? "");
   const [now, setNow] = useState(() => Date.now());
@@ -52,7 +58,18 @@ export default function Inbox({ numbers, initial }: { numbers: WaNumber[]; initi
     return m;
   }, [convs]);
 
-  const list = convs.filter((c) => c.phone_number_id === tab);
+  const needle = q.trim().toLowerCase();
+  const digits = needle.replace(/\D/g, "");
+  const list = convs.filter((c) => {
+    if (c.phone_number_id !== tab) return false;
+    if (filter === "unread" && !c.unread_count) return false;
+    if (filter === "mine" && c.assigned_to !== me) return false;
+    if (filter === "unassigned" && c.assigned_to) return false;
+    if (!needle) return true;
+    return [c.contact_name, c.last_message_preview, c.notes, ...(c.labels ?? [])].some((v) => v?.toLowerCase().includes(needle))
+      || (digits.length >= 3 && c.wa_id.includes(digits.replace(/^0/, "")));
+  });
+  const initialsOf = (email: string) => (members.find((m) => m.email === email)?.display_name ?? email)[0].toUpperCase();
 
   return (
     <div className="min-h-dvh flex flex-col max-w-2xl mx-auto">
@@ -76,10 +93,24 @@ export default function Inbox({ numbers, initial }: { numbers: WaNumber[]; initi
             })}
           </nav>
         )}
+        <div className="px-3 pb-2 space-y-2">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search names, numbers, notes, labels" type="search"
+            className="w-full rounded-xl bg-panel border border-line px-3 py-2 text-sm outline-none focus:border-accent" />
+          <div className="flex gap-1.5 overflow-x-auto">
+            {FILTERS.map(([f, label]) => (
+              <button key={f} onClick={() => setFilter(f)}
+                className={`px-3 py-1 rounded-full text-xs whitespace-nowrap ${filter === f ? "bg-text text-bg font-medium" : "bg-panel text-muted"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
       </header>
 
       {list.length === 0 ? (
-        <p className="text-muted text-center mt-20 px-6">No conversations yet. New WhatsApp messages will appear here.</p>
+        <p className="text-muted text-center mt-20 px-6">
+          {needle || filter !== "all" ? "Nothing matches." : "No conversations yet. New WhatsApp messages will appear here."}
+        </p>
       ) : (
         <ul className="divide-y divide-line">
           {list.map((c) => {
@@ -96,12 +127,24 @@ export default function Inbox({ numbers, initial }: { numbers: WaNumber[]; initi
                     <div className="flex items-center justify-between gap-2 mt-0.5">
                       <span className="truncate text-sm text-muted">{c.last_message_preview ?? ""}</span>
                       <span className="flex items-center gap-1.5 shrink-0">
+                        {c.assigned_to && (
+                          <span title={`Handled by ${c.assigned_to}`} className={`w-5 h-5 rounded-full text-[10px] font-semibold flex items-center justify-center ${c.assigned_to === me ? "bg-accent/25 text-accent" : "bg-panel-2 text-muted"}`}>
+                            {initialsOf(c.assigned_to)}
+                          </span>
+                        )}
                         {!open && <span className="text-[10px] uppercase tracking-wide text-muted border border-line rounded px-1">closed</span>}
                         {c.unread_count > 0 && (
                           <span className="min-w-5 h-5 px-1.5 rounded-full bg-accent text-accent-ink text-xs font-semibold flex items-center justify-center">{c.unread_count}</span>
                         )}
                       </span>
                     </div>
+                    {c.labels?.length > 0 && (
+                      <div className="flex gap-1 mt-1 overflow-hidden">
+                        {c.labels.map((l) => (
+                          <span key={l} className="text-[10px] px-1.5 rounded-full text-bg font-medium whitespace-nowrap" style={{ background: labelColour(l) }}>{l}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </Link>
               </li>

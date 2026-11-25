@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { supabaseBrowser, realtimeAuth } from "@/lib/supabase/browser";
 import { dayLabel, displayName, msgTime, prettyNumber, remaining } from "@/lib/format";
 import { windowClosesAt } from "@/lib/window";
-import type { Conversation, Message, WaNumber } from "@/lib/types";
+import type { Conversation, Member, Message, WaNumber } from "@/lib/types";
+import ContactPanel from "./ContactPanel";
+import { labelColour } from "@/lib/labels";
 import { Avatar } from "./Inbox";
 import MessageBubble from "./MessageBubble";
 import TemplatePicker from "./TemplatePicker";
@@ -13,8 +15,8 @@ import AttachSheet from "./AttachSheet";
 
 const MSG_COLS = "id, conversation_id, wamid, direction, type, body, media_mime, media_filename, media_path, status, error, sent_by_email, sent_at";
 
-export default function Thread({ conversation, number, initial, me }: {
-  conversation: Conversation; number: WaNumber; initial: Message[]; me: string;
+export default function Thread({ conversation, number, initial, me, members }: {
+  conversation: Conversation; number: WaNumber; initial: Message[]; me: string; members: Member[];
 }) {
   const [conv, setConv] = useState(conversation);
   const [messages, setMessages] = useState(initial);
@@ -23,6 +25,7 @@ export default function Thread({ conversation, number, initial, me }: {
   const [error, setError] = useState<string | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showQuick, setShowQuick] = useState(false);
+  const [showContact, setShowContact] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -111,14 +114,25 @@ export default function Thread({ conversation, number, initial, me }: {
           <Link href="/" className="p-2 text-muted" aria-label="Back to inbox">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6" /></svg>
           </Link>
-          <Avatar name={name} size={36} />
-          <div className="min-w-0">
-            <div className="truncate font-medium leading-tight">{name}</div>
-            <div className="truncate text-xs text-muted">
-              {conv.contact_name ? prettyNumber(conv.wa_id) + " · " : ""}{number?.label}
+          <button onClick={() => setShowContact(true)} className="flex items-center gap-3 min-w-0 flex-1 text-left" aria-label="Contact details">
+            <Avatar name={name} size={36} />
+            <div className="min-w-0">
+              <div className="truncate font-medium leading-tight">{name}</div>
+              <div className="truncate text-xs text-muted">
+                {conv.contact_name ? prettyNumber(conv.wa_id) + " · " : ""}{number?.label}
+                {conv.assigned_to && ` · ${conv.assigned_to === me ? "You" : members.find((m) => m.email === conv.assigned_to)?.display_name ?? conv.assigned_to}`}
+              </div>
             </div>
-          </div>
+          </button>
+          <button onClick={() => setShowContact(true)} className="shrink-0 px-3 text-sm text-muted">Details</button>
         </div>
+        {conv.labels.length > 0 && (
+          <div className="flex gap-1.5 px-4 pt-1 overflow-x-auto">
+            {conv.labels.map((l) => (
+              <span key={l} className="text-[11px] px-2 py-0.5 rounded-full text-bg font-medium whitespace-nowrap" style={{ background: labelColour(l) }}>{l}</span>
+            ))}
+          </div>
+        )}
         <div className={`px-4 py-1.5 text-xs ${open ? "text-accent" : "text-warn"}`}>
           {open
             ? `Reply window open, ${remaining(closesAt! - now)} left`
@@ -173,6 +187,11 @@ export default function Thread({ conversation, number, initial, me }: {
           </button>
         )}
       </footer>
+
+      {showContact && (
+        <ContactPanel conv={conv} members={members} me={me}
+          onChange={(p) => setConv((c) => ({ ...c, ...p }))} onClose={() => setShowContact(false)} />
+      )}
 
       {showQuick && (
         <QuickReplies pnid={conv.phone_number_id} firstName={(conv.contact_name ?? "").split(" ")[0]}
