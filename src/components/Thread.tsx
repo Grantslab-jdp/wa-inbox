@@ -8,6 +8,8 @@ import type { Conversation, Message, WaNumber } from "@/lib/types";
 import { Avatar } from "./Inbox";
 import MessageBubble from "./MessageBubble";
 import TemplatePicker from "./TemplatePicker";
+import QuickReplies from "./QuickReplies";
+import AttachSheet from "./AttachSheet";
 
 const MSG_COLS = "id, conversation_id, wamid, direction, type, body, media_mime, media_filename, media_path, status, error, sent_by_email, sent_at";
 
@@ -20,6 +22,9 @@ export default function Thread({ conversation, number, initial, me }: {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showQuick, setShowQuick] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [now, setNow] = useState(() => Date.now());
   const bottom = useRef<HTMLDivElement>(null);
 
@@ -128,8 +133,19 @@ export default function Thread({ conversation, number, initial, me }: {
       <footer className="shrink-0 border-t border-line bg-bg px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {error && <p className="text-danger text-sm px-2 pb-2">{error}</p>}
         {open ? (
-          <form onSubmit={sendText} className="flex items-end gap-2">
-            <button type="button" onClick={() => setShowTemplates(true)} className="shrink-0 h-11 px-3 rounded-full bg-panel text-muted text-sm">Template</button>
+          <form onSubmit={sendText} className="flex items-end gap-1.5">
+            <input ref={fileInput} type="file" hidden
+              accept="image/jpeg,image/png,video/mp4,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) setFile(f); e.target.value = ""; }} />
+            <IconButton label="Attach a photo or file" onClick={() => fileInput.current?.click()}>
+              <path d="M21 12.5l-8.5 8.5a5 5 0 01-7-7L14 5.5a3.5 3.5 0 015 5L10.5 19a2 2 0 01-3-3L15 8.5" />
+            </IconButton>
+            <IconButton label="Quick replies" onClick={() => setShowQuick(true)}>
+              <path d="M13 2L4 14h7l-1 8 9-12h-7z" />
+            </IconButton>
+            <IconButton label="Send a template" onClick={() => setShowTemplates(true)}>
+              <path d="M4 4h16v16H4z" /><path d="M8 9h8M8 13h8M8 17h5" />
+            </IconButton>
             <textarea value={text} onChange={(e) => setText(e.target.value)} rows={1} placeholder="Message"
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(pointer: fine)").matches) { e.preventDefault(); sendText(); } }}
               className="flex-1 resize-none max-h-40 rounded-2xl bg-panel border border-line px-4 py-2.5 outline-none focus:border-accent field-sizing-content" />
@@ -145,10 +161,30 @@ export default function Thread({ conversation, number, initial, me }: {
         )}
       </footer>
 
+      {showQuick && (
+        <QuickReplies pnid={conv.phone_number_id} firstName={(conv.contact_name ?? "").split(" ")[0]}
+          onClose={() => setShowQuick(false)}
+          onPick={(t) => { setText((cur) => (cur ? cur + " " : "") + t); setShowQuick(false); }} />
+      )}
+
+      {file && (
+        <AttachSheet file={file} conversationId={conv.id} pnid={conv.phone_number_id}
+          onClose={() => setFile(null)} onDone={() => setFile(null)} />
+      )}
+
       {showTemplates && (
         <TemplatePicker pnid={conv.phone_number_id} sending={sending} onClose={() => setShowTemplates(false)}
           onSend={async (t) => { if (await send({ template: t })) setShowTemplates(false); }} />
       )}
     </div>
+  );
+}
+
+function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={label} title={label}
+      className="shrink-0 h-11 w-10 rounded-full text-muted flex items-center justify-center active:bg-panel">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
+    </button>
   );
 }
