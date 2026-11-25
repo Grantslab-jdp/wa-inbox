@@ -3,11 +3,12 @@ import { currentMember } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { graph } from "@/lib/whatsapp/graph";
 import { windowOpen } from "@/lib/window";
+import { resolveDrafts } from "@/lib/agent/draft";
 
 export const runtime = "nodejs";
 
 type Body =
-  | { conversationId: string; text: string }
+  | { conversationId: string; text: string; draftId?: string }
   | { conversationId: string; template: { name: string; language: string; params: string[]; preview: string } };
 
 export async function POST(req: NextRequest) {
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
       p_conversation_id: conv.id, p_wamid: wamid, p_type: type, p_body: preview, p_sent_by_email: email, p_raw: payload,
     });
     if (error) throw error;
+    await resolveDrafts(db, conv.id, email, "draftId" in body ? body.draftId : null);
     return NextResponse.json({ ok: true, wamid });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 502 });

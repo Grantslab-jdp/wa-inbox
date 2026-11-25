@@ -1,4 +1,4 @@
-export type WaNumber = { phone_number_id: string; label: string | null; display_phone_number: string | null; waba_id: string | null };
+export type WaNumber = { phone_number_id: string; label: string | null; display_phone_number: string | null; waba_id: string | null; agent_config?: { house_rules?: string; auto_draft?: boolean } };
 
 export type Conversation = {
   id: string;
@@ -32,4 +32,16 @@ export type Message = {
   error: unknown;
   sent_by_email: string | null;
   sent_at: string;
+};
+
+export type Draft = {
+  id: string;
+  conversation_id: string;
+  for_message_id: string | null;
+  status: "pending" | "sent" | "dismissed" | "superseded" | "error";
+  body: string | null;
+  needs_human: boolean;
+  reason: string | null;
+  error: string | null;
+  created_at: string;
 };

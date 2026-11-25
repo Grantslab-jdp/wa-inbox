@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../env";
 import { pushToAll } from "../push";
+import { autoDraft } from "../agent/draft";
 
 // Minimal shapes of the Cloud API webhook payload we rely on.
 type WaContact = { wa_id: string; profile?: { name?: string } };
@@ -77,6 +78,7 @@ async function downloadMedia(db: SupabaseClient, phoneNumberId: string, wamid: s
 
 export async function processWebhook(db: SupabaseClient, payload: WaWebhookPayload) {
   const errors: string[] = [];
+  const toDraft = new Map<string, string>(); // conversation_id -> newest inbound message id
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
       if (change.field !== "messages") continue;
@@ -108,6 +110,7 @@ export async function processWebhook(db: SupabaseClient, payload: WaWebhookPaylo
         if (newId) {
           try {
             const { data: msg } = await db.from("wa_messages").select("conversation_id").eq("id", newId).single();
+            if (msg) toDraft.set(msg.conversation_id, newId);
             const name = names.get(m.from) ?? m.from;
             await pushToAll(db, {
               title: name,
@@ -127,5 +130,8 @@ export async function processWebhook(db: SupabaseClient, payload: WaWebhookPaylo
       }
     }
   }
+  // Suggested replies run after everything is recorded, one per conversation, in parallel.
+  const drafts = await Promise.allSettled([...toDraft].map(([c, m]) => autoDraft(db, c, m)));
+  for (const d of drafts) if (d.status === "rejected") errors.push((d.reason as Error).message);
   return errors;
 }

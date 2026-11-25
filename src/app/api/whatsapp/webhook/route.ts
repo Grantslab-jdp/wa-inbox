@@ -6,6 +6,8 @@ import { processWebhook, type WaWebhookPayload } from "@/lib/whatsapp/process";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Room for media downloads and the suggested-reply draft that run after the response.
+export const maxDuration = 60;
 
 // Meta's one-off verification handshake when the webhook URL is saved in the app dashboard.
 export function GET(req: NextRequest) {

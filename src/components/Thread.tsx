@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { supabaseBrowser, realtimeAuth } from "@/lib/supabase/browser";
 import { dayLabel, displayName, msgTime, prettyNumber, remaining } from "@/lib/format";
 import { windowClosesAt } from "@/lib/window";
-import type { Conversation, Member, Message, WaNumber } from "@/lib/types";
+import type { Conversation, Draft, Member, Message, WaNumber } from "@/lib/types";
+import DraftCard from "./DraftCard";
 import ContactPanel from "./ContactPanel";
 import { labelColour } from "@/lib/labels";
 import { Avatar } from "./Inbox";
@@ -15,9 +16,12 @@ import AttachSheet from "./AttachSheet";
 
 const MSG_COLS = "id, conversation_id, wamid, direction, type, body, media_mime, media_filename, media_path, status, error, sent_by_email, sent_at";
 
-export default function Thread({ conversation, number, initial, me, members }: {
-  conversation: Conversation; number: WaNumber; initial: Message[]; me: string; members: Member[];
+export default function Thread({ conversation, number, initial, me, members, initialDraft }: {
+  conversation: Conversation; number: WaNumber; initial: Message[]; me: string; members: Member[]; initialDraft: Draft | null;
 }) {
+  const [draft, setDraft] = useState<Draft | null>(initialDraft);
+  const [drafting, setDrafting] = useState(false);
+  const editingDraft = useRef<string | null>(null);
   const [conv, setConv] = useState(conversation);
   const [messages, setMessages] = useState(initial);
   const [text, setText] = useState("");
@@ -69,6 +73,13 @@ export default function Thread({ conversation, number, initial, me, members }: {
         (p) => { if ((p.new as Message)?.id) upsert(p.new as Message); })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "wa_conversations", filter: `id=eq.${conv.id}` },
         (p) => setConv((c) => ({ ...c, ...(p.new as Conversation) })))
+      .on("postgres_changes", { event: "*", schema: "public", table: "wa_drafts", filter: `conversation_id=eq.${conv.id}` },
+        (p) => {
+          const d = p.new as Draft;
+          if (!d?.id) return;
+          if (d.status === "pending" || d.status === "error") { setDraft(d); setDrafting(false); }
+          else setDraft((cur) => (cur?.id === d.id ? null : cur));
+        })
       ;
     realtimeAuth(sb).then(() => ch.subscribe((status, err) => { if (status !== "SUBSCRIBED") console.warn("realtime", status, err); }));
     const onVis = async () => {
@@ -79,6 +90,9 @@ export default function Thread({ conversation, number, initial, me, members }: {
       ]);
       if (msgs) setMessages((msgs as Message[]).reverse());
       if (c) setConv(c as Conversation);
+      const { data: d } = await sb.from("wa_drafts").select("*").eq("conversation_id", conv.id)
+        .in("status", ["pending", "error"]).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      setDraft((d as Draft) ?? null);
     };
     document.addEventListener("visibilitychange", onVis);
     return () => { sb.removeChannel(ch); document.removeEventListener("visibilitychange", onVis); };
@@ -101,7 +115,30 @@ export default function Thread({ conversation, number, initial, me, members }: {
   async function sendText(e?: React.FormEvent) {
     e?.preventDefault();
     if (!text.trim() || !open) return;
-    if (await send({ text })) setText("");
+    if (await send({ text, draftId: editingDraft.current })) { setText(""); editingDraft.current = null; setDraft(null); }
+  }
+
+  async function requestDraft() {
+    setDrafting(true);
+    setError(null);
+    try {
+      const r = await fetch("/api/agent/draft", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: conv.id }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Couldn't draft a reply");
+      // The new draft also arrives over realtime; fetch it directly in case realtime is slow.
+      const { data } = await supabaseBrowser().from("wa_drafts").select("*").eq("id", j.draftId).single();
+      if (data) setDraft(data as Draft);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally { setDrafting(false); }
+  }
+
+  async function closeDraft() {
+    if (!draft) return;
+    const id = draft.id;
+    setDraft(null);
+    await supabaseBrowser().from("wa_drafts")
+      .update({ status: "dismissed", resolved_at: new Date().toISOString(), resolved_by: me }).eq("id", id);
   }
 
   const name = displayName(conv);
@@ -159,6 +196,12 @@ export default function Thread({ conversation, number, initial, me, members }: {
 
       <footer className="shrink-0 border-t border-line bg-bg px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {error && <p className="text-danger text-sm px-2 pb-2">{error}</p>}
+        {open && (
+          <DraftCard draft={draft} drafting={drafting} sending={sending}
+            onSend={async () => { if (draft?.body && (await send({ text: draft.body, draftId: draft.id }))) setDraft(null); }}
+            onEdit={() => { if (!draft?.body) return; setText(draft.body); editingDraft.current = draft.id; setDraft(null); }}
+            onDismiss={closeDraft} onRetry={requestDraft} />
+        )}
         {open ? (
           <form onSubmit={sendText} className="flex items-end gap-1.5">
             <input ref={fileInput} type="file" hidden
@@ -169,6 +212,9 @@ export default function Thread({ conversation, number, initial, me, members }: {
             </IconButton>
             <IconButton label="Quick replies" onClick={() => setShowQuick(true)}>
               <path d="M13 2L4 14h7l-1 8 9-12h-7z" />
+            </IconButton>
+            <IconButton label="Draft a reply" onClick={requestDraft}>
+              <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" /><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" />
             </IconButton>
             <IconButton label="Send a template" onClick={() => setShowTemplates(true)}>
               <path d="M4 4h16v16H4z" /><path d="M8 9h8M8 13h8M8 17h5" />

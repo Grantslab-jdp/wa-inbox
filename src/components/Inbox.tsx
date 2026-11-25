@@ -11,8 +11,8 @@ import SignOut from "./SignOut";
 
 const TAB_KEY = "wa-inbox-number";
 
-type Filter = "all" | "unread" | "mine" | "unassigned";
-const FILTERS: [Filter, string][] = [["all", "All"], ["unread", "Unread"], ["mine", "Mine"], ["unassigned", "Unassigned"]];
+type Filter = "all" | "unread" | "needs" | "mine" | "unassigned";
+const FILTERS: [Filter, string][] = [["all", "All"], ["unread", "Unread"], ["needs", "Needs you"], ["mine", "Mine"], ["unassigned", "Unassigned"]];
 
 export default function Inbox({ numbers, initial, me, members }: { numbers: WaNumber[]; initial: Conversation[]; me: string; members: Member[] }) {
   const [filter, setFilter] = useState<Filter>("all");
@@ -63,6 +63,7 @@ export default function Inbox({ numbers, initial, me, members }: { numbers: WaNu
   const list = convs.filter((c) => {
     if (c.phone_number_id !== tab) return false;
     if (filter === "unread" && !c.unread_count) return false;
+    if (filter === "needs" && !c.handover_requested) return false;
     if (filter === "mine" && c.assigned_to !== me) return false;
     if (filter === "unassigned" && c.assigned_to) return false;
     if (!needle) return true;
@@ -76,7 +77,12 @@ export default function Inbox({ numbers, initial, me, members }: { numbers: WaNu
       <header className="sticky top-0 z-10 bg-bg/95 backdrop-blur border-b border-line pt-[env(safe-area-inset-top)]">
         <div className="flex items-center justify-between px-4 h-14">
           <h1 className="text-lg font-semibold">Inbox</h1>
-          <div className="flex items-center gap-4"><PushToggle /><SignOut /></div>
+          <div className="flex items-center gap-4">
+            <Link href="/settings" className="text-muted" aria-label="Agent settings" title="Agent settings">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
+            </Link>
+            <PushToggle /><SignOut />
+          </div>
         </div>
         {numbers.length > 1 && (
           <nav className="flex gap-1 px-2 pb-2 overflow-x-auto">
@@ -132,6 +138,7 @@ export default function Inbox({ numbers, initial, me, members }: { numbers: WaNu
                             {initialsOf(c.assigned_to)}
                           </span>
                         )}
+                        {c.handover_requested && <span className="text-[10px] uppercase tracking-wide text-warn border border-warn/60 rounded px-1">needs you</span>}
                         {!open && <span className="text-[10px] uppercase tracking-wide text-muted border border-line rounded px-1">closed</span>}
                         {c.unread_count > 0 && (
                           <span className="min-w-5 h-5 px-1.5 rounded-full bg-accent text-accent-ink text-xs font-semibold flex items-center justify-center">{c.unread_count}</span>
